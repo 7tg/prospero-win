@@ -22,7 +22,7 @@ FreeBSD headers, so Wine selects its FreeBSD paths (kqueue instead of epoll,
 sysctl), and `__PROSPERO__` selects the PS5 patches. PE modules come from
 the host build that `tools/build_wine_runtime.sh` produces, which also
 supplies winebuild and widl. The exception is the few PE modules a patch
-changes (`PE_MODULES`, today the xinput DLLs), which are built from the
+changes (`PE_MODULES` in `tools/build_wine_ps5.sh`), which are built from the
 patched tree for i386 and x86_64 into `.deps/wine-ps5/pe`. That needs both
 MinGW cross compilers.
 
@@ -125,6 +125,7 @@ before evaluating a candidate built from that cache.
 | 0903 | `ntdll`: a signal frame keeps the FS base it was taken with when the thread resumes where it was; the host's is set only where the handler sends a context to Wine's 64-bit code (the exception dispatcher, a different 64-bit context). The native WoW64 CPU sets the guest FS just before it switches to 32-bit code, and a signal in that window used to send the thread into its 32-bit code with the host FS (GTA San Andreas' DXVK workers crashing at startup in `RtlEnterCriticalSection`) |
 | 0965 | `win32u`: setting a pixel format on the desktop window no longer posts `WM_WINE_SETPIXELFORMAT` to it. Nothing owns the server-created desktop on the PS5, so the message came back to the game's own queue and posted itself again forever. `vkCreateWin32SurfaceKHR` sets format -1 on every surface's window, so a Vulkan surface on the desktop (DXVK or Zink) kept the game on a black screen with one core busy (Syndicate) |
 | 0970 | `ntdll`: `NtQueryInformationProcess` traces each information class below 128 (all of Windows' classes) only the first time it is queried; Wine's own classes, such as the rarely queried `ProcessWineQpcAnchor`, keep a line per call. The title's default `+process` then still shows process creation and exit, but a game that polls a class every frame no longer fills the log: Call of Juarez Gunslinger's `ProcessAffinityMask` line, 60 times a second, pushed the `+loaddll` lines out of the title log |
+| 0971 | `kernelbase`: in a PS5 title (`WINE_PS5_NTDLL_DIR` set, read at DLL attach), `UnhandledExceptionFilter` calls the game's own filter, logs `wine: Unhandled ... (thread N), no debugger, ending the process` and returns `EXCEPTION_EXECUTE_HANDLER`, so the process ends through patch 0896. winedbg can never start in a title (0550), and `start_debugger`'s heap allocations before `CreateProcessW` waited forever when another game thread held the process heap lock (Call of Juarez Gunslinger froze) |
 | 0972 | `faudio` (Wine's bundled FAudio 26.09): upstream FAudio a3b49d6 and 2ead980 (2026-09-26). A source voice that played at the output rate never advanced `resampleOffset`, so when it started resampling, the tap loops of `FAudio_INTERNAL_MixSource` ran from the stale offset, `toResample - tap_samples` wrapped and the SSE2 resampler wrote far past `resampled_audio`. Call of Juarez Gunslinger corrupted its process heap and crashed in the mixer, or in the heap. FAudio is a static library, so every `xaudio2_*` and `xactengine*` module is in `PE_MODULES` |
 
 ## Allocator
