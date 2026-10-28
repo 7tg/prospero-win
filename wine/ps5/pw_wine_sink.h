@@ -85,6 +85,9 @@ int pw_wine_rumble(uint32_t *left,uint32_t *right);
  * read as disconnected); the calls above are controller 0's. */
 void pw_wine_set_pad_at(uint32_t index,const PwWinePad *pad);
 int pw_wine_rumble_at(uint32_t index,uint32_t *left,uint32_t *right);
+/* Bit i set once the game asked about controller i (pw_wine_pad_at); the
+ * title opens the other users' pads only then. */
+uint32_t pw_wine_pads_wanted(void);
 /* The menu to draw, or NULL to close it. The sink sets version and
  * sequence, clamps lines and selected, and terminates every string. */
 void pw_wine_set_menu(const struct pw_title_menu *menu);

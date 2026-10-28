@@ -19,6 +19,7 @@ static pthread_once_t wake_once=PTHREAD_ONCE_INIT;
 static int wake[2]={-1,-1};
 static PwWinePad pad_state[PW_WINE_PADS];
 static uint32_t rumble_left[PW_WINE_PADS],rumble_right[PW_WINE_PADS],rumble_changed[PW_WINE_PADS];
+static uint32_t pads_wanted;
 static struct pw_title_menu menu_state={.version=PW_TITLE_MENU_VERSION};
 /* Audio has its own lock: its sink blocks for a grain, which must not hold
  * up frames or input. */
@@ -195,6 +196,7 @@ int pw_wine_pad_at(uint32_t index,PwWinePad *pad)
     if(!pad)return 0;
     if(index>=PW_WINE_PADS){memset(pad,0,sizeof(*pad));return 0;}
     pthread_mutex_lock(&lock);
+    pads_wanted|=1u<<index;
     connected=pad_state[index].connected!=0;
     if(connected)*pad=pad_state[index];
     else memset(pad,0,sizeof(*pad));
@@ -226,6 +228,14 @@ int pw_wine_rumble_at(uint32_t index,uint32_t *left,uint32_t *right)
     return changed;
 }
 int pw_wine_rumble(uint32_t *left,uint32_t *right){return pw_wine_rumble_at(0,left,right);}
+uint32_t pw_wine_pads_wanted(void)
+{
+    uint32_t wanted;
+    pthread_mutex_lock(&lock);
+    wanted=pads_wanted;
+    pthread_mutex_unlock(&lock);
+    return wanted;
+}
 
 void pw_wine_set_menu(const struct pw_title_menu *menu)
 {
