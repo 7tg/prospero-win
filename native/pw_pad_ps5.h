@@ -106,8 +106,9 @@ int pw_pad_ps5_close(PwPadPs5 *);
  * when the call fails (its result is kept in vibration_rc). L2 and R2
  * vibrate with it, from early in their pull: amplitude from the stronger
  * motor, a lower frequency when the large one leads. The effect is set only
- * when that changes, and its failure (kept in trigger_rc, INT_MIN until
- * the first try) leaves the result alone. */
+ * when that changes, whether the last one failed or not, and its failure
+ * (kept in trigger_rc, INT_MIN until the first try) leaves the result
+ * alone. */
 int pw_pad_ps5_vibrate(PwPadPs5 *,uint8_t large,uint8_t small);
 
 #endif

@@ -118,7 +118,7 @@ int pw_pad_ps5_open_other(PwPadPs5 *pad,const PwPadPs5 *first,int32_t after,
     int32_t ids[PW_PAD_PS5_USERS];
     if(!pad || !first || !first->opened || !valid_ops(&first->ops))return PW_ERR_PRECONDITION;
     memset(pad,0,sizeof(*pad));pad->ops=first->ops;pad->user_id=-1;pad->pad_handle=-1;
-    pad->close_rc=INT_MIN;pad->terminate_rc=INT_MIN;
+    pad->close_rc=INT_MIN;pad->terminate_rc=INT_MIN;pad->trigger_rc=INT_MIN;
     if(!pad->ops.login_users)return PW_ERR_UNSUPPORTED;
     int status=pw_pad_init(&pad->core,map,map_count);if(status!=PW_OK)return status;
     for(int i=0;i<PW_PAD_PS5_USERS;i++)ids[i]=-1;
@@ -202,12 +202,13 @@ int pw_pad_ps5_vibrate(PwPadPs5 *pad,uint8_t large,uint8_t small)
     const uint8_t motors[2]={large,small};
     pad->vibration_rc=pad->ops.pad_set_vibration(pad->pad_handle,motors);
     /* The triggers: amplitude 0..8 from the stronger motor, 30 Hz when the
-     * large one leads, 60 Hz when the small one does. */
+     * large one leads, 60 Hz when the small one does. Sent when that changes,
+     * failed or not: a pad that refuses the effect costs no more calls. */
     uint8_t strong=large>small?large:small;
     uint8_t amplitude=(uint8_t)((strong*8+254)/255),frequency=amplitude?(large>=small?30:60):0;
     if(pad->ops.pad_set_trigger_effect &&
        (amplitude!=pad->trigger_amplitude || frequency!=pad->trigger_frequency ||
-        pad->trigger_rc<0)) {
+        pad->trigger_rc==INT_MIN)) {
         PwPadPs5TriggerEffect effect;memset(&effect,0,sizeof(effect));
         effect.mask=PW_PAD_PS5_TRIGGER_L2|PW_PAD_PS5_TRIGGER_R2;
         for(int i=0;i<2 && amplitude;i++) {
@@ -216,7 +217,7 @@ int pw_pad_ps5_vibrate(PwPadPs5 *pad,uint8_t large,uint8_t small)
             command->data[0]=1;command->data[1]=amplitude;command->data[2]=frequency;
         }
         pad->trigger_rc=pad->ops.pad_set_trigger_effect(pad->pad_handle,&effect);
-        if(pad->trigger_rc>=0){pad->trigger_amplitude=amplitude;pad->trigger_frequency=frequency;}
+        pad->trigger_amplitude=amplitude;pad->trigger_frequency=frequency;
     }
     return pad->vibration_rc<0?PW_ERR_STATE:PW_OK;
 }

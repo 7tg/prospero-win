@@ -38,7 +38,7 @@ static const PwPadKeyMap map[]={{L1,'Z',0,0,"left-flipper"}};
 /* L2 and R2 vibrate with the motors: amplitude 0..8 from the stronger one,
  * 30 Hz when the large one leads and 60 Hz when the small one does, set only
  * when that changes. A failed effect leaves the rumble's result alone and
- * is tried again with the next rumble. */
+ * is not tried again until the rumble changes. */
 static void test_trigger_rumble(void)
 {
     PwPadPs5 pad;
@@ -55,12 +55,15 @@ static void test_trigger_rumble(void)
            trigger_seen.command[1].data[1]==2 && trigger_seen.command[1].data[2]==60);
     trigger_rc=-1;
     assert(pw_pad_ps5_vibrate(&pad,0,0)==PW_OK && pad.trigger_rc==-1 && trigger_calls==calls+3);
+    assert(pw_pad_ps5_vibrate(&pad,0,0)==PW_OK && trigger_calls==calls+3);   /* not retried */
     trigger_rc=0;
-    assert(pw_pad_ps5_vibrate(&pad,0,0)==PW_OK && trigger_calls==calls+4 &&
+    assert(pw_pad_ps5_vibrate(&pad,100,0)==PW_OK && trigger_calls==calls+4 && !pad.trigger_rc &&
+           trigger_seen.command[0].data[1]==4);
+    assert(pw_pad_ps5_vibrate(&pad,0,0)==PW_OK && trigger_calls==calls+5 &&
            trigger_seen.command[0].mode==PW_PAD_PS5_TRIGGER_OFF && !trigger_seen.command[0].data[1]);
-    assert(pw_pad_ps5_vibrate(&pad,0,0)==PW_OK && trigger_calls==calls+4);
+    assert(pw_pad_ps5_vibrate(&pad,0,0)==PW_OK && trigger_calls==calls+5);
     vibration_rc=-5;   /* a failed rumble is still the call's result */
-    assert(pw_pad_ps5_vibrate(&pad,100,0)==PW_ERR_STATE && trigger_calls==calls+5);
+    assert(pw_pad_ps5_vibrate(&pad,100,0)==PW_ERR_STATE && trigger_calls==calls+6);
     vibration_rc=0;
     assert(pw_pad_ps5_close(&pad)==PW_OK);
     init_calls=foreground_calls=pad_init_calls=open_calls=read_calls=close_calls=terminate_calls=0;
