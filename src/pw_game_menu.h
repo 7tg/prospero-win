@@ -10,18 +10,26 @@
  * cursor, Cross picks the line and Circle closes. The game's renderer draws
  * the snapshot (DXVK's HUD, through ntdll's ProcessWineTitleMenu).
  *
- * The menu has no entries of its own yet: it says so and offers Close. */
+ * Its entries are "Keyboard input", which asks the title for the console's
+ * on-screen keyboard (src/pw_osk.h), and Close. Picking either closes the
+ * menu. Without the console's keyboard (keyboard 0, which the title sets)
+ * the first line says there are no cheats yet and only Close is offered. */
 typedef struct PwGameMenu {
     int open;
     int cursor;
+    int keyboard;           /* 1: the console's keyboard can be opened */
     uint32_t withheld;      /* buttons the game must not see yet */
     uint32_t game_held;     /* what the game saw held last tick */
 } PwGameMenu;
+
+/* What the picked line asks the title for. */
+enum { PW_GAME_MENU_ACTION_NONE = 0, PW_GAME_MENU_ACTION_KEYBOARD };
 
 /* The pad as the game should see it this tick. */
 typedef struct PwGameMenuView {
     uint32_t held, pressed, released;
     int neutral;            /* 1: sticks centred and triggers released */
+    int action;             /* PW_GAME_MENU_ACTION_*, this tick only */
 } PwGameMenuView;
 
 /* DualSense buttons the menu reads, as scePadRead reports them. */
