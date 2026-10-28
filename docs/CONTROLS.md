@@ -113,9 +113,12 @@ been tested.
 In xinput mode, the DualSenses of the other PS5 users who are signed in
 (a second account or a guest) are the game's XInput controllers 1, 2 and
 3, beside the first player's controller 0. A game's split screen or local
-multiplayer finds them as it would on a PC. Each player's controller
-rumbles on its own. A user who signs in while the game runs is found
-within two seconds and keeps the same controller until they sign out.
+multiplayer finds them as it would on a PC. They are opened once the game
+asks for a second controller, which most games do at start or when a
+player presses a button on the menu. Each player's controller rumbles on
+its own. A user who signs in while the game runs is found within two
+seconds and keeps the same controller until they sign out. A controller
+that fails to open is tried again only after that user signs out and in.
 Buttons, the pointer and closing the game stay the first player's, and
 while the in-game menu is open the other controllers read idle. A profile
 with a `player2` preset (below) gives the second player keys instead, and

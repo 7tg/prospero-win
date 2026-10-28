@@ -203,6 +203,7 @@ void pw_pad_players_init(PwPadPlayers *players)
     if(!players)return;
     memset(players,0,sizeof(*players));
     for(int i=0;i<PW_PAD_PLAYERS;i++){players->slot[i].user_id=-1;players->slot[i].pad_handle=-1;}
+    for(int i=0;i<PW_PAD_PS5_USERS;i++)players->failed[i]=-1;
 }
 
 static int signed_in(const int32_t ids[PW_PAD_PS5_USERS],int32_t user)
@@ -215,7 +216,7 @@ static int signed_in(const int32_t ids[PW_PAD_PS5_USERS],int32_t user)
 static int open_player(PwPadPs5 *pad,const PwPadPs5 *title_pad,int32_t user)
 {
     memset(pad,0,sizeof(*pad));pad->ops=title_pad->ops;pad->user_id=user;pad->pad_handle=-1;
-    pad->close_rc=INT_MIN;pad->terminate_rc=INT_MIN;
+    pad->close_rc=INT_MIN;pad->terminate_rc=INT_MIN;pad->trigger_rc=INT_MIN;
     if(pw_pad_init(&pad->core,title_pad->core.map,title_pad->core.map_count)!=PW_OK)goto failed;
     pad->pad_handle=pad->ops.pad_open(user,0,0,NULL);
     if(pad->pad_handle<0)goto failed;
@@ -240,12 +241,20 @@ int pw_pad_players_scan(PwPadPlayers *players,const PwPadPs5 *title_pad)
                 (void)pw_pad_ps5_close(pad);pad->user_id=-1;
             }
         }
+        /* One who signed out may be tried again when they sign back in. */
+        for(int f=0;f<PW_PAD_PS5_USERS;f++)
+            if(players->failed[f]>=0 && !signed_in(ids,players->failed[f]))players->failed[f]=-1;
         for(int u=0;u<PW_PAD_PS5_USERS;u++) {
             int32_t user=ids[u];int known=user<0 || user==title_pad->user_id;
             for(int i=0;!known && i<PW_PAD_PLAYERS;i++)
                 known=players->slot[i].opened && players->slot[i].user_id==user;
+            for(int f=0;!known && f<PW_PAD_PS5_USERS;f++)known=players->failed[f]==user;
             for(int i=0;!known && i<PW_PAD_PLAYERS;i++)
-                if(!players->slot[i].opened){(void)open_player(&players->slot[i],title_pad,user);known=1;}
+                if(!players->slot[i].opened) {
+                    int failed=!open_player(&players->slot[i],title_pad,user);known=1;
+                    for(int f=0;failed && f<PW_PAD_PS5_USERS;f++)
+                        if(players->failed[f]<0){players->failed[f]=user;failed=0;}
+                }
         }
     }
     for(int i=0;i<PW_PAD_PLAYERS;i++)open+=players->slot[i].opened!=0;

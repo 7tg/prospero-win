@@ -1044,10 +1044,15 @@ int main(int argc, char **argv)
     void (*set_pad)(const PwWinePad *) = NULL;
     int (*rumble)(uint32_t *, uint32_t *) = NULL;
     /* xinput mode without a player2 preset: the other signed-in users'
-     * DualSenses are XInput controllers 1..3 (patch 0471). */
+     * DualSenses are XInput controllers 1..3 (patch 0471), once the game
+     * has asked xinput for one of them. players_fed[i] is set while slot
+     * i feeds controller i+1. */
     static PwPadPlayers players;
+    static uint8_t players_fed[PW_PAD_PLAYERS];
     void (*set_pad_at)(uint32_t, const PwWinePad *) = NULL;
     int (*rumble_at)(uint32_t, uint32_t *, uint32_t *) = NULL;
+    uint32_t (*pads_wanted)(void) = NULL;
+    uint64_t players_from = 0;   /* the tick a game first asked for controllers 1..3 */
     int players_open = 0;
     /* [display] menu: L3+R3 opens the menu, DXVK's HUD draws it (patch 0973). */
     void (*set_menu)(const struct pw_title_menu *) = NULL;
@@ -1303,6 +1308,10 @@ int main(int argc, char **argv)
                     (uintptr_t)pw_prx_lookup(start.descriptor, "pw_wine_set_pad_at");
                 rumble_at = (int (*)(uint32_t, uint32_t *, uint32_t *))
                     (uintptr_t)pw_prx_lookup(start.descriptor, "pw_wine_rumble_at");
+                pads_wanted = (uint32_t (*)(void))
+                    (uintptr_t)pw_prx_lookup(start.descriptor, "pw_wine_pads_wanted");
+                /* Without the controllers the game asked for, no players. */
+                if (!pads_wanted) set_pad_at = NULL;
             }
         }
         if (game && game->display.menu) {
@@ -1316,10 +1325,6 @@ int main(int argc, char **argv)
             pad_status = pw_pad_ps5_open(&pad, &pad_ops, pad_open_map,
                                          sizeof(pad_open_map) / sizeof(pad_open_map[0]));
         pw_pad_players_init(&players);
-        if (set_pad_at && pad_status == PW_OK) {
-            players_open = pw_pad_players_scan(&players, &pad);
-            PS5LOG_LOG("PW_WINE64 players=%d", players_open);
-        }
         if (player2 && pad_status == PW_OK)
             pad2_status = pw_pad_ps5_open_other(&pad2, &pad, -1, pad_open_map,
                                                 sizeof(pad_open_map) / sizeof(pad_open_map[0]));
@@ -1541,13 +1546,22 @@ int main(int argc, char **argv)
             if (pad_read || scripted) set_pad(connected ? &state : NULL);
         }
         /* XInput controllers 1..3: the other signed-in users' DualSenses,
-         * each with its own rumble. A user who signs in during the game is
-         * found within two seconds. While the menu is open they read idle,
-         * as controller 0 does. */
-        if (set_pad_at && pad_status == PW_OK) {
-            if (tick % (2 * PW_WINE64_TICKS_PER_S) == 0) {
+         * each with its own rumble, once the game has asked xinput for one
+         * of them; the sink is asked once a second until then. A user who
+         * signs in during the game is found within two seconds. Only an
+         * open slot is fed; one that closes reads as disconnected once.
+         * While the menu is open they read idle, as controller 0 does. */
+        if (set_pad_at && pad_status == PW_OK && !players_from && tick % PW_WINE64_TICKS_PER_S == 0) {
+            uint32_t wanted = pads_wanted();
+            if (wanted & 0xeu) {
+                PS5LOG_LOG("PW_WINE64 players wanted=%#x", (unsigned)wanted);
+                players_from = tick;
+            }
+        }
+        if (players_from) {
+            if (tick == players_from || tick % (2 * PW_WINE64_TICKS_PER_S) == 0) {
                 int open = pw_pad_players_scan(&players, &pad);
-                if (open != players_open) PS5LOG_LOG("PW_WINE64 players=%d", open);
+                if (open != players_open || tick == players_from) PS5LOG_LOG("PW_WINE64 players=%d", open);
                 players_open = open;
             }
             for (uint32_t i = 0; i < PW_PAD_PLAYERS; i++) {
@@ -1555,8 +1569,12 @@ int main(int argc, char **argv)
                 PwPadPs5 idle;
                 PwWinePad state;
                 uint32_t left, right;
-                const PwPadPs5 *read = player->opened && pw_pad_ps5_read(player) == PW_OK ?
-                                       player : NULL;
+                if (!player->opened) {
+                    if (players_fed[i]) set_pad_at(i + 1, NULL);
+                    players_fed[i] = 0;
+                    continue;
+                }
+                const PwPadPs5 *read = pw_pad_ps5_read(player) == PW_OK ? player : NULL;
                 if (read && menu_open) {
                     idle = *player;
                     idle.core.previous_buttons = idle.core.pressed_edges = idle.core.released_edges = 0;
@@ -1566,7 +1584,8 @@ int main(int argc, char **argv)
                     read = &idle;
                 }
                 set_pad_at(i + 1, pw_wine_game_pad(read, &state) ? &state : NULL);
-                if (rumble_at && rumble_at(i + 1, &left, &right) == 1 && player->opened)
+                players_fed[i] = 1;
+                if (rumble_at && rumble_at(i + 1, &left, &right) == 1)
                     (void)pw_pad_ps5_vibrate(player, (uint8_t)(left >> 8), (uint8_t)(right >> 8));
             }
         }
@@ -1713,6 +1732,7 @@ int main(int argc, char **argv)
         }
         if (close_requested && now - close_requested >= (uint64_t)PW_WINE64_CLOSE_WAIT_S * 1000000000u) {
             PS5LOG_LOG("PW_WINE64 close timeout: leaving the game");
+            pw_pad_players_close(&players);
             restart_title(NULL, launch.cycle + 1u, "close-timeout");
             break;
         }

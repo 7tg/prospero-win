@@ -5,16 +5,16 @@
 #include <string.h>
 
 /* The console: the foreground user 42's pad is handle 7, another user's is
- * 100+user. */
+ * 100+user, and user 7's never opens. */
 static int user_initialize(const void *p){assert(!p);return 0;}
 static int foreground(int32_t *u){*u=42;return 0;}
 static int terminate(void){return 0;}
 static int pad_init(void){return 0;}
 static int32_t logged_in[PW_PAD_PS5_USERS]={42,-1,-1,-1};static int login_rc;
 static int login_users(int32_t ids[PW_PAD_PS5_USERS]){memcpy(ids,logged_in,sizeof(logged_in));return login_rc;}
-static int opens;
+static int opens,opens7;
 static int pad_open(int32_t u,int32_t t,int32_t i,const void *p)
-{assert(!t&&!i&&!p);opens++;return u==42?7:100+u;}
+{assert(!t&&!i&&!p);opens++;if(u==7){opens7++;return -1;}return u==42?7:100+u;}
 static PwPadPs5Data other[1];static int other_count;
 static int pad_read(int32_t h,PwPadPs5Data *s,int32_t n)
 {assert(n==64&&h!=7);memcpy(s,other,(size_t)other_count*sizeof(*s));return other_count;}
@@ -37,7 +37,7 @@ static void sign_in(int32_t a,int32_t b,int32_t c,int32_t d)
  * title's own user is never one. */
 int main(void)
 {
-    PwPadPs5 title;PwPadPlayers players;
+    PwPadPs5 title;PwPadPlayers players,none;
     assert(pw_pad_ps5_open(&title,&ops,map,1)==PW_OK);
     pw_pad_players_init(&players);
     assert(players.slot[0].user_id==-1 && players.slot[0].pad_handle==-1);
@@ -65,8 +65,18 @@ int main(void)
     other_count=0;
     /* A failed sign-in list changes nothing; without the op, no players. */
     login_rc=-1;assert(pw_pad_players_scan(&players,&title)==2);login_rc=0;
+    /* A pad that fails to open is tried once while its user stays signed
+     * in, and once more after they sign out and back in. */
+    sign_in(42,9,3,7);
+    assert(pw_pad_players_scan(&players,&title)==2 && opens7==1 && !players.slot[2].opened);
+    assert(pw_pad_players_scan(&players,&title)==2 && opens7==1);
+    sign_in(42,9,3,-1);
+    assert(pw_pad_players_scan(&players,&title)==2 && opens7==1);
+    sign_in(42,9,3,7);
+    assert(pw_pad_players_scan(&players,&title)==2 && opens7==2);
+    assert(pw_pad_players_scan(&players,&title)==2 && opens7==2);
     PwPadPs5 bare=title;bare.ops.login_users=NULL;
-    PwPadPlayers none;pw_pad_players_init(&none);
+    none.failed[0]=7;pw_pad_players_init(&none);assert(none.failed[0]==-1 && none.failed[3]==-1);
     assert(pw_pad_players_scan(&none,&bare)==0 && !none.slot[0].opened);
     /* A closed title pad opens no players. */
     PwPadPs5 shut=title;shut.opened=0;
@@ -74,6 +84,6 @@ int main(void)
     pw_pad_players_close(&players);
     assert(!players.slot[0].opened && !players.slot[1].opened && closed_count==3);
     assert(pw_pad_ps5_close(&title)==PW_OK);
-    puts("pad players passed: sign-in order, kept slots, sign-out and reuse, compatible vibration mode, reads, failed lists");
+    puts("pad players passed: sign-in order, kept slots, sign-out and reuse, compatible vibration mode, reads, failed lists, failed opens");
     return 0;
 }

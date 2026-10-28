@@ -117,13 +117,15 @@ int pw_pad_ps5_vibrate(PwPadPs5 *,uint8_t large,uint8_t small);
  * through XInput: slot i is controller i+1, the title's own pad being
  * controller 0. A user keeps their slot while signed in; one who signs in
  * takes the first free slot. Each pad is opened in the compatible
- * vibration mode, and read and vibrated as the title's is. */
-typedef struct PwPadPlayers { PwPadPs5 slot[PW_PAD_PLAYERS]; } PwPadPlayers;
+ * vibration mode, and read and vibrated as the title's is. failed holds
+ * the users whose pad did not open, -1 for none. */
+typedef struct PwPadPlayers { PwPadPs5 slot[PW_PAD_PLAYERS];int32_t failed[PW_PAD_PS5_USERS]; } PwPadPlayers;
 void pw_pad_players_init(PwPadPlayers *);
 /* Opens the pads of users who signed in and closes those of users who
  * signed out, with the open title pad's ops; the user service and
  * scePadInit stay the title pad's. Returns the number of open slots. A
- * failed sign-in list, or no login_users op, changes nothing. */
+ * user whose pad failed to open is not tried again while they stay signed
+ * in. A failed sign-in list, or no login_users op, changes nothing. */
 int pw_pad_players_scan(PwPadPlayers *,const PwPadPs5 *title_pad);
 void pw_pad_players_close(PwPadPlayers *);
 
