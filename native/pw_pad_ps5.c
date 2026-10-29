@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+#define _POSIX_C_SOURCE 200809L    /* clock_gettime */
 #include "pw_pad_ps5.h"
 #include <limits.h>
 #include <stddef.h>
 #include <string.h>
+#include <time.h>
 
 enum { PW_PAD_INTERCEPTED=0x80000000u };
 _Static_assert(sizeof(PwPadPs5Data)==120,"ScePad data ABI");
@@ -232,9 +234,19 @@ int pw_pad_players_scan(PwPadPlayers *players,const PwPadPs5 *title_pad)
 {
     int open=0;
     if(!players || !title_pad)return 0;
-    int32_t ids[PW_PAD_PS5_USERS];
+    int32_t ids[PW_PAD_PS5_USERS];int listed=0;
     for(int i=0;i<PW_PAD_PS5_USERS;i++)ids[i]=-1;
-    if(title_pad->opened && title_pad->ops.login_users && title_pad->ops.login_users(ids)>=0) {
+    players->login_ns=0;
+    /* The sign-in list is asked on the thread that presents frames: its
+     * time is kept for the title to log when it is slow. */
+    if(title_pad->opened && title_pad->ops.login_users) {
+        struct timespec t0,t1;
+        clock_gettime(CLOCK_MONOTONIC,&t0);
+        listed=title_pad->ops.login_users(ids)>=0;
+        clock_gettime(CLOCK_MONOTONIC,&t1);
+        players->login_ns=(uint64_t)((t1.tv_sec-t0.tv_sec)*1000000000LL+(t1.tv_nsec-t0.tv_nsec));
+    }
+    if(listed) {
         for(int i=0;i<PW_PAD_PLAYERS;i++) {
             PwPadPs5 *pad=&players->slot[i];
             if(pad->opened && !signed_in(ids,pad->user_id)) {

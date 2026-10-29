@@ -1562,6 +1562,9 @@ int main(int argc, char **argv)
             if (tick == players_from || tick % (2 * PW_WINE64_TICKS_PER_S) == 0) {
                 int open = pw_pad_players_scan(&players, &pad);
                 if (open != players_open || tick == players_from) PS5LOG_LOG("PW_WINE64 players=%d", open);
+                /* sceUserServiceGetLoginUserIdList ran on this, the frame thread. */
+                if (players.login_ns > 1000000u)
+                    PS5LOG_LOG("PW_WINE64 players login_users_us=%u", (unsigned)(players.login_ns / 1000u));
                 players_open = open;
             }
             for (uint32_t i = 0; i < PW_PAD_PLAYERS; i++) {

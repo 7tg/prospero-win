@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
+#define _POSIX_C_SOURCE 200809L    /* nanosleep */
 #include "../native/pw_pad_ps5.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /* The console: the foreground user 42's pad is handle 7, another user's is
  * 100+user, and user 7's never opens. */
@@ -10,8 +12,12 @@ static int user_initialize(const void *p){assert(!p);return 0;}
 static int foreground(int32_t *u){*u=42;return 0;}
 static int terminate(void){return 0;}
 static int pad_init(void){return 0;}
-static int32_t logged_in[PW_PAD_PS5_USERS]={42,-1,-1,-1};static int login_rc;
-static int login_users(int32_t ids[PW_PAD_PS5_USERS]){memcpy(ids,logged_in,sizeof(logged_in));return login_rc;}
+static int32_t logged_in[PW_PAD_PS5_USERS]={42,-1,-1,-1};static int login_rc;static long login_sleep_ns;
+static int login_users(int32_t ids[PW_PAD_PS5_USERS])
+{
+    if(login_sleep_ns){struct timespec wait={0,login_sleep_ns};nanosleep(&wait,NULL);}
+    memcpy(ids,logged_in,sizeof(logged_in));return login_rc;
+}
 static int opens,opens7;
 static int pad_open(int32_t u,int32_t t,int32_t i,const void *p)
 {assert(!t&&!i&&!p);opens++;if(u==7){opens7++;return -1;}return u==42?7:100+u;}
@@ -65,6 +71,9 @@ int main(void)
     other_count=0;
     /* A failed sign-in list changes nothing; without the op, no players. */
     login_rc=-1;assert(pw_pad_players_scan(&players,&title)==2);login_rc=0;
+    /* The sign-in list call is timed, for the title to log a slow one. */
+    login_sleep_ns=2000000;assert(pw_pad_players_scan(&players,&title)==2 && players.login_ns>=2000000u);
+    login_sleep_ns=0;assert(pw_pad_players_scan(&players,&title)==2 && players.login_ns<2000000u);
     /* A pad that fails to open is tried once while its user stays signed
      * in, and once more after they sign out and back in. */
     sign_in(42,9,3,7);
@@ -77,13 +86,13 @@ int main(void)
     assert(pw_pad_players_scan(&players,&title)==2 && opens7==2);
     PwPadPs5 bare=title;bare.ops.login_users=NULL;
     none.failed[0]=7;pw_pad_players_init(&none);assert(none.failed[0]==-1 && none.failed[3]==-1);
-    assert(pw_pad_players_scan(&none,&bare)==0 && !none.slot[0].opened);
+    assert(pw_pad_players_scan(&none,&bare)==0 && !none.slot[0].opened && none.login_ns==0);
     /* A closed title pad opens no players. */
     PwPadPs5 shut=title;shut.opened=0;
     assert(pw_pad_players_scan(&none,&shut)==0);
     pw_pad_players_close(&players);
     assert(!players.slot[0].opened && !players.slot[1].opened && closed_count==3);
     assert(pw_pad_ps5_close(&title)==PW_OK);
-    puts("pad players passed: sign-in order, kept slots, sign-out and reuse, compatible vibration mode, reads, failed lists, failed opens");
+    puts("pad players passed: sign-in order, kept slots, sign-out and reuse, compatible vibration mode, reads, failed lists, failed opens, timed list");
     return 0;
 }
